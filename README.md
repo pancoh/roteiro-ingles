@@ -16,16 +16,22 @@ Cobre a Semana 0 (configuração do ambiente) e as 12 semanas da Fase 1 (Fundaç
 ## Avaliação semanal com o Claude
 
 1. Em cada dia, registre a dificuldade (1 a 5), a compreensão do áudio ou vídeo, o tempo real e onde travou.
-2. No domingo, clique em **Pedir ajuste ao Claude**. O Claude Opus 5.5 lê as avaliações e ajusta os dias da semana seguinte, mantendo 30 minutos por dia.
+2. No domingo, peça o ajuste da semana seguinte. O Claude lê as avaliações e ajusta os dias, mantendo 30 minutos por dia.
 3. A semana seguinte mostra o diagnóstico, os dias ajustados e o motivo de cada mudança. É possível voltar ao plano original.
 
-**Chave da API:** configure no botão **Claude**, no topo. A chave fica só no `localStorage` do navegador. Ela não entra no repositório nem no arquivo de exportação. Crie a chave em [platform.claude.com](https://platform.claude.com/) e defina um limite de gasto.
+Há três formas de pedir o ajuste:
 
-**Sem chave:** o botão **Ajuste automático** aplica regras simples (dificuldade média e compreensão) e não gera custo.
+| Forma | Como funciona | Custo |
+|---|---|---|
+| **Plano do Claude (padrão)** | **Copiar pedido**, colar numa conversa nova do claude.ai, copiar a resposta e usar **Aplicar resposta**. | Incluído na assinatura do Claude |
+| **API (opcional)** | Com uma chave configurada no botão **Claude**, o Claude Opus 5.5 é chamado direto do navegador. | De US$ 0,05 a US$ 0,10 por semana, cobrado à parte |
+| **Regras automáticas** | Ajuste simples pela dificuldade média e pela compreensão. | Zero |
 
-**Custo estimado:** de US$ 0,05 a US$ 0,10 por avaliação semanal.
+O site confere a resposta antes de aplicar: dias que não somam de 25 a 35 minutos são descartados, e os números ficam dentro dos limites.
 
-A lógica fica em `assets/js/coach.js`. O SDK oficial (`@anthropic-ai/sdk`) é carregado da CDN esm.sh apenas quando uma avaliação é pedida.
+**Chave da API:** fica só no `localStorage` do navegador. Ela não entra no repositório nem no arquivo de exportação. Crie a chave em [platform.claude.com](https://platform.claude.com/) e defina um limite de gasto.
+
+A lógica fica em `assets/js/coach.js`. O SDK oficial (`@anthropic-ai/sdk`) é carregado da CDN esm.sh apenas quando um ajuste pela API é pedido.
 
 ## Progresso entre aparelhos
 

@@ -217,3 +217,13 @@ table.tasks td.res { width: 32%; font-size: 13.5px; }
 .coach-dialog input { width: 100%; margin-top: 4px; }
 .coach-notes { font-size: 12.5px; color: var(--muted); padding-left: 18px; margin: 14px 0 0; }
 .coach-notes li { margin: 4px 0; }
+
+/* Fluxo copiar e colar (plano do Claude) */
+.coach-steps { margin: 8px 0 0; padding-left: 20px; font-size: 14px; }
+.coach-steps li { margin: 10px 0; }
+.coach-steps textarea { width: 100%; margin-top: 8px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; resize: vertical; }
+a.btn { display: inline-block; text-decoration: none; color: var(--text); }
+.coach-preview { margin-top: 8px; font-size: 13px; }
+.coach-preview summary { cursor: pointer; color: var(--muted); }
+.coach-preview pre { white-space: pre-wrap; max-height: 260px; overflow: auto; background: var(--surface); border-radius: 6px; padding: 10px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.coach-alt { border-top: 1px solid var(--border); padding-top: 10px; }

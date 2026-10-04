@@ -226,6 +226,63 @@ async function coachRequest(wi) {
   };
 }
 
+/* ================= Plano do Claude: copiar e colar no claude.ai =================
+   Usa a assinatura do usuário no claude.ai, sem chave da API. O pedido leva as
+   mesmas instruções e o mesmo formato de resposta da chamada pela API. */
+function coachManualPrompt(wi) {
+  const next = WEEKS[wi + 1];
+  const template = {
+    semana: next.n,
+    diagnostico: "2 a 4 frases sobre como foi a semana e o que muda",
+    nivel_percebido: "facil_demais | adequado | dificil_demais",
+    nivel_conteudo: "N1 | N1/N2 | N2 | N2/N3 | N3",
+    cartoes_novos_por_dia: 10,
+    minitalk_minutos: 2,
+    foco_da_semana: "uma frase",
+    dicas: ["até 3 dicas práticas"],
+    dias: [{ dia: 0, motivo: "uma frase", tarefas: [{ minutos: 10, o_que_fazer: "descrição da tarefa", recurso: "recurso usado" }] }]
+  };
+  return [
+    COACH_SYSTEM,
+    "",
+    coachBuildPrompt(wi),
+    "",
+    "FORMATO DA RESPOSTA",
+    "Responda somente com um bloco de código JSON, sem texto antes ou depois, neste formato:",
+    "```json",
+    JSON.stringify(template, null, 2),
+    "```",
+    "Regras do JSON:",
+    "- \"semana\" deve ser " + next.n + ".",
+    "- \"nivel_percebido\" e \"nivel_conteudo\": use exatamente um dos valores listados.",
+    "- \"cartoes_novos_por_dia\" entre 5 e 15; \"minitalk_minutos\" entre 1 e 6 (números inteiros).",
+    "- \"dias\": só os dias que mudam (0 = segunda ... 6 = domingo), cada um com todas as tarefas do dia somando 30 minutos. Use [] se nada muda."
+  ].join("\n");
+}
+
+function coachParseManual(wi, text) {
+  const next = WEEKS[wi + 1];
+  let raw = String(text || "").trim();
+  if (!raw) throw new CoachError("Cole a resposta do Claude no campo antes de aplicar.");
+  // Aceita a resposta com ou sem bloco de código e com texto em volta.
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) raw = fence[1];
+  const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+  if (start < 0) throw new CoachError("Não encontrei um JSON na resposta. Copie a resposta inteira do Claude.");
+  if (end <= start) throw new CoachError("O JSON da resposta está incompleto. Copie a resposta inteira do Claude.");
+  let data;
+  try { data = JSON.parse(raw.slice(start, end + 1)); } catch (e) { throw new CoachError("O JSON da resposta está incompleto ou inválido. Peça ao Claude para reenviar só o JSON."); }
+  if (data.semana != null && Number(data.semana) !== next.n) throw new CoachError("Esta resposta é para a Semana " + data.semana + ", mas o pedido é para a Semana " + next.n + ". Copie o pedido de novo.");
+  const enumOk = COACH_SCHEMA.properties.nivel_percebido.enum.includes(data.nivel_percebido) && COACH_SCHEMA.properties.nivel_conteudo.enum.includes(data.nivel_conteudo);
+  if (!enumOk || typeof data.diagnostico !== "string" || !Array.isArray(data.dias)) throw new CoachError("A resposta não está no formato pedido. Peça ao Claude para seguir o formato do JSON.");
+  return {
+    source: "manual",
+    model: "Claude (seu plano no claude.ai)",
+    date: new Date().toISOString(),
+    data: coachSanitize(data)
+  };
+}
+
 /* ================= Reserva: regras automáticas (sem API) ================= */
 function coachRules(wi) {
   const fbs = [0, 1, 2, 3, 4, 5, 6].map(d => state.feedback[dk(wi, d)]).filter(Boolean);

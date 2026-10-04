@@ -27,8 +27,8 @@
 </header>
 
 <dialog id="coachDialog" class="coach-dialog" aria-labelledby="coachTitle">
-  <h2 id="coachTitle">Avaliação semanal com o Claude</h2>
-  <p>No domingo, o <b id="coachModel">Claude</b> lê suas avaliações da semana e ajusta os dias da semana seguinte.</p>
+  <h2 id="coachTitle">Chave da API (opcional)</h2>
+  <p>Sem chave, o ajuste de domingo funciona copiando o pedido para o claude.ai, com o seu plano. Com uma chave, o <b id="coachModel">Claude</b> faz o ajuste direto, sem copiar e colar.</p>
   <label for="apiKey" class="fb-label">Chave da API da Anthropic</label>
   <input type="password" id="apiKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
   <p class="coach-hint" id="keyStatus"></p>
@@ -55,7 +55,7 @@
         <li>Cada dia tem <b>30 minutos ativos</b>. Clique no dia para ver o que estudar, com qual recurso e por quantos minutos.</li>
         <li>Marque o dia como concluído na caixa do card ou no botão do detalhe. O progresso fica salvo neste navegador.</li>
         <li>Para continuar em outro aparelho, use <b>Exportar progresso</b> aqui e <b>Importar progresso</b> no outro aparelho (rodapé da página).</li>
-        <li><b>Avaliação do dia:</b> no detalhe de cada dia, registre a dificuldade, a compreensão e onde travou. No domingo, peça o ajuste da semana seguinte ao Claude (botão Claude, no topo) ou use o ajuste automático, que não precisa de chave.</li>
+        <li><b>Avaliação do dia:</b> no detalhe de cada dia, registre a dificuldade, a compreensão e onde travou. No domingo, copie o pedido de ajuste, cole numa conversa do claude.ai e traga a resposta de volta. Isso usa o seu plano do Claude. Com uma chave da API (botão Claude, no topo), o ajuste fica automático.</li>
         <li>No vocabulário, clique nas palavras que você já conhece. As demais vão para o Anki aos poucos (no máximo 10 cartões novos por dia).</li>
         <li><b>Tempos mortos:</b> meta de 1 a 2 horas de inglês passivo por dia. Cada dia traz uma sugestão.</li>
       </ul>

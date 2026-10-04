@@ -197,10 +197,17 @@ function renderCoachBox(wi) {
   let h = '<div class="coach-box"><div class="fb-title">Ajuste da Semana ' + next.n + ' (' + esc(next.pt) + ')</div>';
   h += '<p class="coach-hint">Você avaliou ' + rated + ' de 7 dias desta semana. Quanto mais dias avaliados, melhor o ajuste.</p>';
   if (adj) h += '<p class="coach-hint">Já existe um ajuste (' + esc(adj.model) + ', ' + new Date(adj.date).toLocaleDateString("pt-BR") + '). Pedir de novo substitui o anterior.</p>';
-  h += '<div class="coach-actions">';
-  if (hasKey) h += '<button type="button" class="btn primary" data-coach="claude">Pedir ajuste ao Claude</button>';
-  else h += '<button type="button" class="btn primary" data-coach="config">Configurar o Claude</button>';
-  h += '<button type="button" class="btn" data-coach="rules">Ajuste automático (sem API)</button>';
+  h += '<ol class="coach-steps">';
+  h += '<li><b>Copie o pedido</b> e cole numa conversa nova do Claude (usa o seu plano, sem custo extra).<div class="coach-actions">';
+  h += '<button type="button" class="btn primary" data-coach="copy">Copiar pedido</button>';
+  h += '<a class="btn" href="https://claude.ai/new" target="_blank" rel="noopener">Abrir claude.ai</a></div>';
+  h += '<details class="coach-preview"><summary>Ver o pedido</summary><pre>' + esc(coachManualPrompt(wi)) + '</pre></details></li>';
+  h += '<li><b>Cole a resposta do Claude</b> aqui e aplique.<textarea id="coachPaste" rows="4" placeholder="Cole aqui a resposta inteira do Claude (o bloco JSON)."></textarea>';
+  h += '<div class="coach-actions"><button type="button" class="btn primary" data-coach="paste">Aplicar resposta</button></div></li>';
+  h += '</ol>';
+  h += '<div class="coach-actions coach-alt">';
+  if (hasKey) h += '<button type="button" class="btn" data-coach="claude">Pedir pela API (automático)</button>';
+  h += '<button type="button" class="btn" data-coach="rules">Ajuste automático (sem Claude)</button>';
   if (adj) h += '<button type="button" class="btn" data-coach="goto">Ver Semana ' + next.n + '</button>';
   h += '</div><div class="coach-status" id="coachStatus" aria-live="polite"></div></div>';
   return h;
@@ -214,7 +221,7 @@ function renderAdaptBanner(wi) {
   if (!adj || !adj.data) return "";
   const a = adj.data;
   const prev = WEEKS[wi - 1];
-  let h = '<div class="adapt-banner"><div class="ab-head"><b>' + (adj.source === "claude" ? "Ajuste do Claude" : "Ajuste automático") + ' para esta semana</b>';
+  let h = '<div class="adapt-banner"><div class="ab-head"><b>' + (adj.source === "regras" ? "Ajuste automático" : "Ajuste do Claude") + ' para esta semana</b>';
   h += '<span>' + esc(adj.model) + ' · ' + new Date(adj.date).toLocaleDateString("pt-BR") + (prev ? ' · com base na Semana ' + prev.n : '') + '</span></div>';
   h += '<p>' + esc(a.diagnostico) + '</p>';
   h += '<div class="ab-stats"><span><b>Semana anterior:</b> ' + esc(NIVEL_LABEL[a.nivel_percebido] || a.nivel_percebido) + '</span><span><b>Conteúdo:</b> ' + esc(a.nivel_conteudo) + '</span><span><b>Cartões novos:</b> ' + a.cartoes_novos_por_dia + ' por dia</span><span><b>Mini-talk:</b> ' + a.minitalk_minutos + ' min</span></div>';
@@ -381,11 +388,23 @@ async function handleCoach(action, btn) {
   if (action === "config") { openCoachDialog(); return; }
   if (action === "goto") { goToWeek(wi + 1); return; }
   if (action === "rules") {
-    state.adapt[wi + 1] = coachRules(wi);
-    delete state.original[wi + 1];
-    save(); renderWeek();
-    const st = document.getElementById("coachStatus");
-    if (st) st.textContent = "Ajuste automático salvo para a Semana " + WEEKS[wi + 1].n + ".";
+    applyAdjust(wi, coachRules(wi), "Ajuste automático salvo para a Semana " + WEEKS[wi + 1].n + ".");
+    return;
+  }
+  if (action === "copy") {
+    const text = coachManualPrompt(wi);
+    const ok = () => { if (status) status.textContent = "Pedido copiado. Cole numa conversa nova do Claude e depois traga a resposta para o campo abaixo."; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, () => fallbackCopy(text, ok));
+    else fallbackCopy(text, ok);
+    return;
+  }
+  if (action === "paste") {
+    try {
+      const result = coachParseManual(wi, document.getElementById("coachPaste").value);
+      applyAdjust(wi, result, adjustMessage(result));
+    } catch (err) {
+      if (status) status.textContent = coachErrorMessage(err);
+    }
     return;
   }
   if (action === "claude") {
@@ -393,17 +412,25 @@ async function handleCoach(action, btn) {
     if (status) status.textContent = "Analisando sua semana com o " + COACH.MODEL_LABEL + ". Isso pode levar até um minuto.";
     try {
       const result = await coachRequest(wi);
-      state.adapt[wi + 1] = result;
-      delete state.original[wi + 1];
-      save(); renderWeek();
-      const st = document.getElementById("coachStatus");
-      const d = result.data;
-      if (st) st.textContent = "Ajuste salvo: " + d.dias.length + " dia(s) alterado(s)" + (d.descartados ? " (" + d.descartados + " sugestão(ões) descartada(s) por não somar 30 minutos)" : "") + ".";
+      applyAdjust(wi, result, adjustMessage(result));
     } catch (err) {
       if (status) status.textContent = coachErrorMessage(err);
       btn.disabled = false;
     }
   }
+}
+
+/* Salva o ajuste da semana seguinte e mostra o resultado. */
+function applyAdjust(wi, result, message) {
+  state.adapt[wi + 1] = result;
+  delete state.original[wi + 1];
+  save(); renderWeek();
+  const st = document.getElementById("coachStatus");
+  if (st) st.textContent = message;
+}
+function adjustMessage(result) {
+  const d = result.data;
+  return "Ajuste salvo: " + d.dias.length + " dia(s) alterado(s)" + (d.descartados ? " (" + d.descartados + " sugestão(ões) descartada(s) por não somar 30 minutos)" : "") + ".";
 }
 
 function goToWeek(wi) {
