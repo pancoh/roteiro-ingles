@@ -58,10 +58,10 @@ function load() {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) {
       const s = JSON.parse(raw);
-      return { days: s.days || {}, known: s.known || {}, week: s.week, day: s.day };
+      return { days: s.days || {}, known: s.known || {}, feedback: s.feedback || {}, adapt: s.adapt || {}, original: s.original || {}, week: s.week, day: s.day };
     }
   } catch (e) {}
-  return { days: {}, known: {}, week: null, day: null };
+  return { days: {}, known: {}, feedback: {}, adapt: {}, original: {}, week: null, day: null };
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
@@ -93,6 +93,17 @@ function parseVocab(text) {
   return groups;
 }
 const VOCAB = WEEKS.map(w => parseVocab(w.vocab));
+
+/* Dia efetivo: o plano original ou o ajuste do Claude para aquele dia.
+   state.adapt[wi] guarda o ajuste DA semana wi (gerado no domingo da semana anterior). */
+function effectiveDay(wi, d) {
+  const base = ALL_DAYS[wi][d];
+  const adj = state.adapt[wi];
+  if (!adj || !adj.data || state.original[wi]) return { day: base, adapted: null };
+  const change = adj.data.dias.find(x => x.dia === d);
+  if (!change) return { day: base, adapted: null };
+  return { day: Object.assign({}, base, { tasks: change.tarefas }), adapted: change };
+}
 
 function firstOpenWeek() {
   for (let i = 0; i < WEEKS.length; i++) if (weekDone(i) < 7) return i;
@@ -134,12 +145,14 @@ function resLink(r) {
 
 function renderDetail(wi, d) {
   const w = WEEKS[wi];
-  const day = ALL_DAYS[wi][d];
+  const eff = effectiveDay(wi, d);
+  const day = eff.day;
   const total = day.tasks.reduce((a, t) => a + t[0], 0);
   const done = isDone(wi, d);
   let h = '<div class="detail" id="detail">';
   h += '<h4>' + DAY_NAMES[d] + ': ' + esc(day.t) + '</h4>';
   h += '<div class="meta">Semana ' + w.n + ' · ' + esc(w.pt) + ' · ' + total + ' minutos ativos</div>';
+  if (eff.adapted) h += '<div class="note adapted"><b>Ajustado pelo Claude</b>' + esc(eff.adapted.motivo) + '</div>';
   h += '<table class="tasks"><thead><tr><th>Tempo</th><th>O que estudar</th><th>Recurso</th></tr></thead><tbody>';
   day.tasks.forEach(t => {
     h += '<tr><td class="min">' + t[0] + ' min</td><td>' + esc(t[1]) + '</td><td class="res">' + resLink(t[2]) + '</td></tr>';
@@ -151,7 +164,68 @@ function renderDetail(wi, d) {
   if (day.extra) h += '<div class="note extra"><b>Extra</b>' + esc(day.extra) + '</div>';
   h += '<div class="note"><b>Tempos mortos (meta: 1 a 2 horas)</b>' + esc(w.passive) + '</div>';
   h += '<div class="note"><b>Micro-hábito do dia</b>' + esc(MICRO[d]) + '</div>';
+  h += renderFeedback(wi, d);
   h += '<button type="button" class="complete' + (done ? ' is-done' : '') + '" data-toggle="' + d + '">' + (done ? 'Concluído (clique para desmarcar)' : 'Marcar dia como concluído') + '</button>';
+  if (d === 6 && WEEKS[wi + 1]) h += renderCoachBox(wi);
+  h += '</div>';
+  return h;
+}
+
+/* Avaliação do dia: alimenta o ajuste semanal. */
+function renderFeedback(wi, d) {
+  const fb = state.feedback[dk(wi, d)] || {};
+  let h = '<div class="feedback"><div class="fb-title">Como foi este dia? <span class="fb-saved" id="fbSaved"></span></div>';
+  h += '<div class="fb-row"><span class="fb-label">Dificuldade</span><div class="seg" role="radiogroup" aria-label="Dificuldade">';
+  for (let i = 1; i <= 5; i++) {
+    h += '<label class="seg-item' + (fb.dif === i ? ' on' : '') + '"><input type="radio" name="fbdif" value="' + i + '" data-fb="dif"' + (fb.dif === i ? ' checked' : '') + '>' + DIF_LABELS[i] + '</label>';
+  }
+  h += '</div></div>';
+  const comp = fb.comp != null && fb.comp !== "" ? fb.comp : "";
+  h += '<div class="fb-row"><label class="fb-label" for="fbcomp">Compreensão do áudio ou vídeo</label><div class="fb-range"><input type="range" id="fbcomp" min="0" max="100" step="10" value="' + (comp === "" ? 50 : comp) + '" data-fb="comp"><output id="fbcompOut">' + (comp === "" ? "não avaliado" : comp + "%") + '</output></div></div>';
+  h += '<div class="fb-row"><label class="fb-label" for="fbmin">Tempo real (minutos)</label><input type="number" id="fbmin" min="0" max="240" inputmode="numeric" value="' + esc(fb.min || "") + '" data-fb="min" placeholder="30"></div>';
+  h += '<div class="fb-row"><label class="fb-label" for="fbnota">Onde travou ou o que achou</label><textarea id="fbnota" rows="2" maxlength="500" data-fb="nota" placeholder="Ex.: não entendi a fala rápida; travei ao dar opinião.">' + esc(fb.nota || "") + '</textarea></div>';
+  h += '</div>';
+  return h;
+}
+
+/* Domingo: pedir o ajuste da próxima semana. */
+function renderCoachBox(wi) {
+  const next = WEEKS[wi + 1];
+  const adj = state.adapt[wi + 1];
+  const hasKey = !!coachGetKey();
+  const rated = [0, 1, 2, 3, 4, 5, 6].filter(d => state.feedback[dk(wi, d)] && state.feedback[dk(wi, d)].dif).length;
+  let h = '<div class="coach-box"><div class="fb-title">Ajuste da Semana ' + next.n + ' (' + esc(next.pt) + ')</div>';
+  h += '<p class="coach-hint">Você avaliou ' + rated + ' de 7 dias desta semana. Quanto mais dias avaliados, melhor o ajuste.</p>';
+  if (adj) h += '<p class="coach-hint">Já existe um ajuste (' + esc(adj.model) + ', ' + new Date(adj.date).toLocaleDateString("pt-BR") + '). Pedir de novo substitui o anterior.</p>';
+  h += '<div class="coach-actions">';
+  if (hasKey) h += '<button type="button" class="btn primary" data-coach="claude">Pedir ajuste ao Claude</button>';
+  else h += '<button type="button" class="btn primary" data-coach="config">Configurar o Claude</button>';
+  h += '<button type="button" class="btn" data-coach="rules">Ajuste automático (sem API)</button>';
+  if (adj) h += '<button type="button" class="btn" data-coach="goto">Ver Semana ' + next.n + '</button>';
+  h += '</div><div class="coach-status" id="coachStatus" aria-live="polite"></div></div>';
+  return h;
+}
+
+const NIVEL_LABEL = { facil_demais: "Fácil demais", adequado: "Na medida", dificil_demais: "Difícil demais" };
+
+/* Aviso no topo da semana que recebeu ajuste. */
+function renderAdaptBanner(wi) {
+  const adj = state.adapt[wi];
+  if (!adj || !adj.data) return "";
+  const a = adj.data;
+  const prev = WEEKS[wi - 1];
+  let h = '<div class="adapt-banner"><div class="ab-head"><b>' + (adj.source === "claude" ? "Ajuste do Claude" : "Ajuste automático") + ' para esta semana</b>';
+  h += '<span>' + esc(adj.model) + ' · ' + new Date(adj.date).toLocaleDateString("pt-BR") + (prev ? ' · com base na Semana ' + prev.n : '') + '</span></div>';
+  h += '<p>' + esc(a.diagnostico) + '</p>';
+  h += '<div class="ab-stats"><span><b>Semana anterior:</b> ' + esc(NIVEL_LABEL[a.nivel_percebido] || a.nivel_percebido) + '</span><span><b>Conteúdo:</b> ' + esc(a.nivel_conteudo) + '</span><span><b>Cartões novos:</b> ' + a.cartoes_novos_por_dia + ' por dia</span><span><b>Mini-talk:</b> ' + a.minitalk_minutos + ' min</span></div>';
+  if (a.foco_da_semana) h += '<p><b>Foco:</b> ' + esc(a.foco_da_semana) + '</p>';
+  if (a.dicas && a.dicas.length) h += '<ul>' + a.dicas.map(x => '<li>' + esc(x) + '</li>').join("") + '</ul>';
+  if (a.dias.length) {
+    h += '<p class="ab-days">' + a.dias.length + ' dia(s) ajustado(s): ' + a.dias.map(x => DAY_NAMES[x.dia]).join(", ") + '. ';
+    h += '<button type="button" class="linkbtn" data-orig="1">' + (state.original[wi] ? 'Mostrar plano ajustado' : 'Mostrar plano original') + '</button></p>';
+  } else {
+    h += '<p class="ab-days">Nenhum dia foi alterado: o plano original continua valendo.</p>';
+  }
   h += '</div>';
   return h;
 }
@@ -167,13 +241,16 @@ function renderWeek() {
   h += '<div class="week-head"><div class="eyebrow">Semana ' + w.n + (w.n === 0 ? ' · Preparação' : ' · Fase 1: Fundação') + '</div>';
   h += '<h2>' + esc(w.pt) + '</h2><p class="en">' + esc(w.en) + '</p><p class="why">' + esc(w.why) + '</p>';
   h += '<div class="wk-prog"><div class="bar"><span style="width:' + Math.round(n / 7 * 100) + '%"></span></div>' + n + ' de 7 dias</div></div>';
+  h += renderAdaptBanner(wi);
 
   h += '<h3 class="sec">Atividade diária</h3><div class="days">';
-  ALL_DAYS[wi].forEach((day, d) => {
+  ALL_DAYS[wi].forEach((_, d) => {
+    const eff = effectiveDay(wi, d);
+    const day = eff.day;
     const done = isDone(wi, d);
     const mins = day.tasks.reduce((a, t) => a + t[0], 0);
     h += '<div class="day' + (d === curDay ? ' sel' : '') + (done ? ' done' : '') + '">';
-    h += '<button type="button" class="day-open" data-d="' + d + '" aria-expanded="' + (d === curDay) + '"><span class="dn">' + DAY_SHORT[d] + '</span><span class="dt">' + esc(day.t) + '</span><span class="ds">' + (done ? 'Concluído' : mins + ' min') + '</span></button>';
+    h += '<button type="button" class="day-open" data-d="' + d + '" aria-expanded="' + (d === curDay) + '"><span class="dn">' + DAY_SHORT[d] + '</span><span class="dt">' + esc(day.t) + '</span><span class="ds">' + (done ? 'Concluído' : mins + ' min') + (eff.adapted ? ' · <span class="tag">Ajustado</span>' : '') + '</span></button>';
     h += '<label class="day-check" title="Marcar como concluído"><input type="checkbox" data-check="' + d + '"' + (done ? ' checked' : '') + ' aria-label="' + DAY_NAMES[d] + ' concluído"></label>';
     h += '</div>';
   });
@@ -227,12 +304,7 @@ function setDone(wi, d, val) {
 /* ================= Eventos ================= */
 document.getElementById("weeksNav").addEventListener("click", e => {
   const b = e.target.closest("[data-w]");
-  if (!b) return;
-  curWeek = +b.dataset.w;
-  curDay = firstOpenDay(curWeek);
-  state.week = curWeek; state.day = curDay; save();
-  renderAll();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  if (b) goToWeek(+b.dataset.w);
 });
 
 document.getElementById("week").addEventListener("click", e => {
@@ -253,6 +325,13 @@ document.getElementById("week").addEventListener("click", e => {
     if (state.known[k]) delete state.known[k]; else state.known[k] = true;
     save(); renderWeek(); return;
   }
+  const orig = e.target.closest("[data-orig]");
+  if (orig) {
+    if (state.original[curWeek]) delete state.original[curWeek]; else state.original[curWeek] = true;
+    save(); renderWeek(); return;
+  }
+  const coachBtn = e.target.closest("[data-coach]");
+  if (coachBtn) { handleCoach(coachBtn.dataset.coach, coachBtn); return; }
   const copy = e.target.closest("[data-copy]");
   if (copy) {
     const text = copy.parentElement.querySelector("pre").textContent;
@@ -268,6 +347,106 @@ document.getElementById("week").addEventListener("change", e => {
   if (cb) setDone(curWeek, +cb.dataset.check, cb.checked);
 });
 
+/* Avaliação do dia: salva sem redesenhar a página, para não perder o foco do campo. */
+function saveFeedback(el) {
+  const k = dk(curWeek, curDay);
+  const fb = Object.assign({}, state.feedback[k]);
+  const field = el.dataset.fb;
+  if (field === "dif") {
+    fb.dif = +el.value;
+    el.closest(".seg").querySelectorAll(".seg-item").forEach(x => x.classList.toggle("on", x.contains(el)));
+  } else if (field === "comp") {
+    fb.comp = +el.value;
+    document.getElementById("fbcompOut").textContent = el.value + "%";
+  } else if (field === "min") {
+    fb.min = el.value === "" ? "" : Math.max(0, Math.round(+el.value));
+  } else if (field === "nota") {
+    fb.nota = el.value.slice(0, 500);
+  }
+  fb.date = new Date().toISOString();
+  state.feedback[k] = fb;
+  save();
+  const s = document.getElementById("fbSaved");
+  if (s) { s.textContent = "Salvo"; clearTimeout(saveFeedback.t); saveFeedback.t = setTimeout(() => { s.textContent = ""; }, 1500); }
+}
+["input", "change"].forEach(ev => document.getElementById("week").addEventListener(ev, e => {
+  const el = e.target.closest("[data-fb]");
+  if (el) saveFeedback(el);
+}));
+
+/* ================= Claude: ajuste semanal ================= */
+async function handleCoach(action, btn) {
+  const wi = curWeek;
+  const status = document.getElementById("coachStatus");
+  if (action === "config") { openCoachDialog(); return; }
+  if (action === "goto") { goToWeek(wi + 1); return; }
+  if (action === "rules") {
+    state.adapt[wi + 1] = coachRules(wi);
+    delete state.original[wi + 1];
+    save(); renderWeek();
+    const st = document.getElementById("coachStatus");
+    if (st) st.textContent = "Ajuste automático salvo para a Semana " + WEEKS[wi + 1].n + ".";
+    return;
+  }
+  if (action === "claude") {
+    btn.disabled = true;
+    if (status) status.textContent = "Analisando sua semana com o " + COACH.MODEL_LABEL + ". Isso pode levar até um minuto.";
+    try {
+      const result = await coachRequest(wi);
+      state.adapt[wi + 1] = result;
+      delete state.original[wi + 1];
+      save(); renderWeek();
+      const st = document.getElementById("coachStatus");
+      const d = result.data;
+      if (st) st.textContent = "Ajuste salvo: " + d.dias.length + " dia(s) alterado(s)" + (d.descartados ? " (" + d.descartados + " sugestão(ões) descartada(s) por não somar 30 minutos)" : "") + ".";
+    } catch (err) {
+      if (status) status.textContent = coachErrorMessage(err);
+      btn.disabled = false;
+    }
+  }
+}
+
+function goToWeek(wi) {
+  curWeek = wi;
+  curDay = firstOpenDay(curWeek);
+  state.week = curWeek; state.day = curDay; save();
+  renderAll();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/* Configuração da chave da API */
+const coachDialog = document.getElementById("coachDialog");
+function openCoachDialog() {
+  const k = coachGetKey();
+  document.getElementById("apiKey").value = "";
+  document.getElementById("apiKey").placeholder = k ? "Chave salva: " + k.slice(0, 10) + "..." + k.slice(-4) : "sk-ant-...";
+  document.getElementById("keyStatus").textContent = k ? "Há uma chave salva neste navegador." : "Nenhuma chave salva.";
+  document.getElementById("coachModel").textContent = COACH.MODEL_LABEL;
+  if (coachDialog.showModal) coachDialog.showModal(); else coachDialog.setAttribute("open", "");
+}
+document.getElementById("coachOpen").addEventListener("click", openCoachDialog);
+document.getElementById("keyClose").addEventListener("click", () => coachDialog.close ? coachDialog.close() : coachDialog.removeAttribute("open"));
+document.getElementById("keySave").addEventListener("click", async () => {
+  const v = document.getElementById("apiKey").value.trim();
+  const st = document.getElementById("keyStatus");
+  if (!v) { st.textContent = "Cole a chave antes de salvar."; return; }
+  coachSetKey(v);
+  st.textContent = "Chave salva. Testando...";
+  try {
+    const name = await coachTestKey();
+    st.textContent = "Chave válida. Modelo disponível: " + name + ".";
+  } catch (err) {
+    st.textContent = coachErrorMessage(err);
+  }
+  renderWeek();
+});
+document.getElementById("keyRemove").addEventListener("click", () => {
+  coachSetKey("");
+  document.getElementById("keyStatus").textContent = "Chave removida deste navegador.";
+  document.getElementById("apiKey").placeholder = "sk-ant-...";
+  renderWeek();
+});
+
 function fallbackCopy(text, ok) {
   const ta = document.createElement("textarea");
   ta.value = text; document.body.appendChild(ta); ta.select();
@@ -277,7 +456,7 @@ function fallbackCopy(text, ok) {
 
 document.getElementById("reset").addEventListener("click", () => {
   if (!confirm("Zerar todo o progresso (dias concluídos e palavras marcadas)?")) return;
-  state.days = {}; state.known = {}; state.week = null; state.day = null;
+  state.days = {}; state.known = {}; state.feedback = {}; state.adapt = {}; state.original = {}; state.week = null; state.day = null;
   save();
   curWeek = 0; curDay = 0;
   renderAll();
@@ -287,7 +466,8 @@ document.getElementById("reset").addEventListener("click", () => {
    O progresso fica no navegador. O arquivo JSON leva o progresso
    de um aparelho para outro. */
 document.getElementById("export").addEventListener("click", () => {
-  const data = { app: "roteiro-ingles", version: 1, exportedAt: new Date().toISOString(), days: state.days, known: state.known };
+  // A chave da API não entra no arquivo: ela fica em outra entrada do localStorage.
+  const data = { app: "roteiro-ingles", version: 2, exportedAt: new Date().toISOString(), days: state.days, known: state.known, feedback: state.feedback, adapt: state.adapt, original: state.original };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -308,6 +488,7 @@ importInput.addEventListener("change", () => {
       if (data.app !== "roteiro-ingles" || typeof data.days !== "object" || typeof data.known !== "object") throw new Error("formato");
       if (!confirm("Substituir o progresso deste navegador pelo progresso do arquivo?")) return;
       state.days = data.days || {}; state.known = data.known || {};
+      state.feedback = data.feedback || {}; state.adapt = data.adapt || {}; state.original = data.original || {};
       save();
       curWeek = firstOpenWeek(); curDay = firstOpenDay(curWeek);
       renderAll();

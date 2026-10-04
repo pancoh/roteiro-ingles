@@ -22,8 +22,28 @@
       <div class="bar"><span id="barFill"></span></div>
       <div class="count" id="count">0 de 0 dias</div>
     </div>
+    <button type="button" class="btn" id="coachOpen">Claude</button>
   </div>
 </header>
+
+<dialog id="coachDialog" class="coach-dialog" aria-labelledby="coachTitle">
+  <h2 id="coachTitle">Avaliação semanal com o Claude</h2>
+  <p>No domingo, o <b id="coachModel">Claude</b> lê suas avaliações da semana e ajusta os dias da semana seguinte.</p>
+  <label for="apiKey" class="fb-label">Chave da API da Anthropic</label>
+  <input type="password" id="apiKey" autocomplete="off" spellcheck="false" placeholder="sk-ant-...">
+  <p class="coach-hint" id="keyStatus"></p>
+  <div class="coach-actions">
+    <button type="button" class="btn primary" id="keySave">Salvar e testar</button>
+    <button type="button" class="btn" id="keyRemove">Remover chave</button>
+    <button type="button" class="btn" id="keyClose">Fechar</button>
+  </div>
+  <ul class="coach-notes">
+    <li>Crie a chave em <a href="https://platform.claude.com/" target="_blank" rel="noopener">platform.claude.com</a>. Defina um limite de gasto mensal na conta.</li>
+    <li>A chave fica salva só neste navegador. Ela não vai para o GitHub nem para o arquivo de exportação.</li>
+    <li>Use este recurso apenas em aparelhos pessoais. Remova a chave se outra pessoa usar o navegador.</li>
+    <li>Custo estimado: de US$ 0,05 a US$ 0,10 por avaliação semanal. O uso da API é cobrado à parte de assinaturas do Claude.</li>
+  </ul>
+</dialog>
 
 <main class="wrap">
   <nav class="weeks-nav" id="weeksNav" aria-label="Semanas"></nav>
@@ -35,6 +55,7 @@
         <li>Cada dia tem <b>30 minutos ativos</b>. Clique no dia para ver o que estudar, com qual recurso e por quantos minutos.</li>
         <li>Marque o dia como concluído na caixa do card ou no botão do detalhe. O progresso fica salvo neste navegador.</li>
         <li>Para continuar em outro aparelho, use <b>Exportar progresso</b> aqui e <b>Importar progresso</b> no outro aparelho (rodapé da página).</li>
+        <li><b>Avaliação do dia:</b> no detalhe de cada dia, registre a dificuldade, a compreensão e onde travou. No domingo, peça o ajuste da semana seguinte ao Claude (botão Claude, no topo) ou use o ajuste automático, que não precisa de chave.</li>
         <li>No vocabulário, clique nas palavras que você já conhece. As demais vão para o Anki aos poucos (no máximo 10 cartões novos por dia).</li>
         <li><b>Tempos mortos:</b> meta de 1 a 2 horas de inglês passivo por dia. Cada dia traz uma sugestão.</li>
       </ul>
@@ -77,6 +98,7 @@
 <script src="assets/js/semanas/semana-10.js"></script>
 <script src="assets/js/semanas/semana-11.js"></script>
 <script src="assets/js/semanas/semana-12.js"></script>
+<script src="assets/js/coach.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>
